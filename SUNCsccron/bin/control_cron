@@ -1,0 +1,219 @@
+#!/usr/bin/ksh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)control_cron	1.2	08/02/12 SMI"
+#
+# Method for the cron agents smf manifwest and for the zsh component
+#
+# This method is called by the manifest, by the optional probe script of the
+# smf method and as start stop and probe for the zsh component.
+#
+# It is started with options and up to 2 parameters:
+#
+# The options are used it smf_cron is started for the zsh component.
+# For example: smf_cron -R resource -G group -S timout -P project start
+# In the example above are no agent specific options included, obviously they
+# need to be amended.
+#
+# If you use it for smf omit all the options and specify the parameters as
+# stated below.
+#
+# $1 start stop or probe
+# $2 is the smf service tag name. It is used only if the parameter $1 is probe
+#
+
+MYNAME=`basename ${0}`
+MYDIR=`dirname ${0}`
+
+if [ -f /lib/svc/share/smf_include.sh ]
+then
+	. /lib/svc/share/smf_include.sh
+fi
+
+. ${MYDIR}/../etc/config
+. ${MYDIR}/../lib/functions_static
+. ${MYDIR}/functions
+
+debug_message "Method: ${MYNAME} ${1} - Begin"
+${SET_DEBUG}
+
+# get the options for gds and the zsh command, amend as appropriate
+
+while getopts 'R:G:C:S:P' opt
+do
+        case "${opt}" in
+                R)      RESOURCE=${OPTARG};;
+                G)      RESOURCEGROUP=${OPTARG};;
+                C)      RGCRONTAB=${OPTARG};;
+                S)      ZONE_START_TIMEOUT=${OPTARG};;
+                P)      ZONE_PROJECT=${OPTARG};;
+                *)      exit 1;;
+        esac
+done
+
+# if no option is set ($OPTIND is 1 in this case), use the smf properties
+
+if [ ${OPTIND} -gt 1 ]
+then
+	shift $((${OPTIND} - 1))
+else
+	
+	# Setting SMF_FMRI in case of validate and probe
+        
+	if [ -z "${SMF_FMRI}" ]
+	then
+		SMF_FMRI=${2}	
+	fi
+
+	# getting the necessary parameters and filling the variables usually
+	# filled in from options
+
+	get_fmri_parameters
+
+fi
+
+# set some generic variables
+LOGFILE=/var/tmp/${RESOURCE}_logfile
+
+case ${1} in
+
+start)
+	# start application cron
+
+	# exit from start, if the options are wrong
+
+	validate_options
+	rc_val=${?}
+	if [ ${rc_val} -ne 0 ]
+	then
+		terminate ${1} ${rc_val}
+	fi
+	
+	rm ${LOGFILE} 2>/dev/null
+	
+	if validate
+	then
+
+		start_cron
+		rc_val=${?}
+		
+		if [ ${rc_val} -eq 0 ]
+		then
+		        log_message notice "start_command rc<${rc_val}>"
+		        debug_message "Method: ${MYNAME} - End (Exit 0)"
+		else
+		        log_message err "start_command rc<${rc_val}>"
+		fi
+	else
+	        debug_message "Method: ${MYNAME} - End (Exit 1)"
+		rc_val=1
+	fi;;
+
+stop)
+	# stop application cron
+
+	# exit from stop, if the options are wrong
+
+	validate_options
+	rc_val=${?}
+	if [ ${rc_val} -ne 0 ]
+	then
+		terminate ${1} ${rc_val}
+	fi
+	
+	stop_cron
+	rc_val=${?}
+	
+	if [ "${rc_val}" -eq 0 ]
+	then
+	        log_message notice "stop_command rc<${rc_val}>"
+	else
+	        log_message err "stop_command rc<${rc_val}>"
+	fi;;
+
+probe)
+	# probe application cron
+
+	# exit from probe, if the options are wrong
+
+	validate_options
+	rc_val=${?}
+	if [ ${rc_val} -ne 0 ]
+	then
+		terminate ${1} ${rc_val}
+	fi
+	
+	if ! validate
+	then
+	        rc_val=100
+	else
+		
+		# spin off a project based smf probe if necessary, do the probe with the check function otherwise
+
+		if [ "${Project}" != ":default" ] && [ -n "${SMF_FMRI}" ]
+		then
+			if /usr/bin/newtask -p ${Project} ${MYDIR}/probe_smf_cron ${SMF_FMRI}
+			then
+				rc_val=0
+			else
+				rc_val=100
+			fi
+		else
+
+			if check_cron
+			then
+				rc_val=0
+			else
+				rc_val=100
+			fi
+		fi
+	fi;;
+
+validate)
+	# validate the parameters for application cron
+
+	validate_options
+	rc_val=${?}
+	if [ ${rc_val} -ne 0 ]
+	then
+		terminate ${1} ${rc_val}
+	fi
+	
+	rm ${LOGFILE} 2>/dev/null
+	
+	if validate
+	then
+	        rc_val=0
+	else
+	        rc_val=1
+	fi;;
+	
+esac
+
+# terminate with the right return code, either with an smf specific or the
+# gds/zsh based return code
+
+terminate ${1} ${rc_val}

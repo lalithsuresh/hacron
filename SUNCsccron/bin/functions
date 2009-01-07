@@ -1,0 +1,459 @@
+#!/usr/bin/ksh
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)functions	1.2	08/02/12 SMI"
+#
+
+PKG=SUNCsccron
+METHOD=`basename $0`
+TASK_COMMAND=""
+
+ZONENAME=/usr/bin/zonename
+
+SCLOGGER=/usr/cluster/lib/sc/scds_syslog
+PMFADM=/usr/cluster/bin/pmfadm
+
+CRONTABDIR=/var/spool/cron/crontabs
+
+FLAG=""
+
+get_fmri_parameters ()
+{
+
+	# extract the smf properties you need to call your agent commands
+
+        debug_message "Function: get_fmri_parameters - Begin "
+        ${SET_DEBUG}
+
+	# Resource name
+	RESOURCE=`/usr/bin/svcprop -p parameters/Resource ${SMF_FMRI}`
+
+	# Resource Group
+	RESOURCEGROUP=`/usr/bin/svcprop -p parameters/Resource_group ${SMF_FMRI}`
+
+	# Start_timeout
+	START_TIMEOUT=`/usr/bin/svcprop -p start/timeout_seconds ${SMF_FMRI}`
+
+	# Start Project
+	Project=:default
+	if /usr/bin/svcprop ${SMF_FMRI}|grep start/project >/dev/null
+	then
+		Project=`/usr/bin/svcprop -p start/project ${SMF_FMRI}`
+		if [ "${Project}" != ":default" ]
+		then
+			PROJ_OPT=" -P ${Project}"
+			ZONE_PROJECT=${Project}
+		fi
+	fi
+
+	#
+	#  add all the additional properties you need
+	#
+
+        debug_message "Function: get_fmri_parameters - End "
+}
+
+check_restart_dependency()
+{
+        debug_message "Function: check_restart_dependency - Start called with the following arguments "$*
+        ${SET_DEBUG}
+
+        #
+        # Put here the specific application code to report if the dependent
+	# application has been restarted or not.
+        #
+	# Use hatimerun when calling an external program.
+	#
+        # Return 0 if the dependent resource has NOT been restarted.
+        # Return 1 if the dependent resource has been restarted.
+
+
+        debug_message "Function: check_restart_dependency - End"
+
+        return 0
+}
+
+check_start_dependency()
+{
+	debug_message "Function: check_start_dependency - Begin - called with the following arguments "$*
+	${SET_DEBUG}
+
+        #
+        # Put here the specific application code to report if the dependent
+        # application has been started or not
+	#
+	# Use hatimerun when calling an external program.
+        #
+        # Return 0 if the dependent resource is online
+        # Return 1 if the dependent resource is not online
+
+
+	debug_message "Function: check_start_dependency - End"
+
+	return 0
+}
+
+validate_options()
+{
+        debug_message "Function: validate_options - Begin"
+	${SET_DEBUG}
+
+        #
+        # Ensure all mandatory options are set
+        #
+
+        for i in RESOURCE RESOURCEGROUP RGCRONTAB
+        do
+                case ${i} in
+                        RESOURCE)
+                        if [ -z "${RESOURCE}" ]; then
+                                scds_syslog -p daemon.err -t $(syslog_tag) -m \
+                                "validate_options: %s Option -R not set" \
+                                "${METHOD}"
+                                return 1
+                        fi;;
+
+                        RESOURCEGROUP)
+                        if [ -z "${RESOURCEGROUP}" ]; then
+                                scds_syslog -p daemon.err -t $(syslog_tag) -m \
+                                "validate_options: %s Option -G not set" \
+                                "${METHOD}"
+                                return 1
+                        fi;;
+                        
+                        RGCRONTAB)
+                        if [ -z "${RGCRONTAB}" ]; then
+                                scds_syslog -p daemon.err -t $(syslog_tag) -m \
+                                "validate_options: %s Option -C not set" \
+                                "${METHOD}"
+                                return 1
+                        fi;;
+                        
+                esac
+        done
+
+	debug_message "Function: validate_options - End"
+}
+
+validate()
+{
+	#
+	# Validate cron
+	#
+	
+        debug_message "Function: validate - Begin"
+	${SET_DEBUG}
+
+	rc_validate=0
+
+	# Checking if RG's crontab file is ready
+
+	if [ ! -f "${RGCRONTAB}" ]
+	then
+   		scds_syslog -p daemon.err -t $(syslog_tag) -m \
+			"Validate - file %s does not exist" \
+			"${RGCRONTAB}"
+		rc_validate=1
+	else
+		debug_message "Validate - ${RGCRONTAB} exists"
+	fi
+
+
+	debug_message "Function: validate - End"
+	return ${rc_validate}
+}
+
+start_cron()
+{
+	#
+	# Start cron
+	#
+
+        debug_message "Function: start_cron - Begin"
+	${SET_DEBUG}
+
+	#
+	# If remote dependencies are needed for start dependencies 
+	# then uncomment the lines that starts with 
+	# Remote dependency.
+
+	# You have to provide the code for checking if the dependent resource
+	# is online in function check_start_dependency()
+	#
+	# If needed add any options to the start_dependency function call.
+	# The start_dependency function will call the check_start_dependency 
+	# function.
+
+	# Remote dependency
+	#
+	# start_dependency # Add any options
+	#
+	# St=${?}
+	#
+	# if [ ${St} -ne 0 ]; then
+	#	return 1
+	# fi
+	#	   
+
+	#
+	# If your application does not leave you a valid pmf tree you can
+	# disable pmf for the service tag of your application by uncommenting
+	# the code below.
+	#
+	# GDS needs a pmf tree for the pmf service tag from the beginning of
+	# the start process until the fault monitor is started under control of
+	# pmf (monitor tag). This phase can not last longer than the start
+	# timeout value. To guarantee this we place a sleep as long as the
+	# start timout in the background. Then we disable the pmf restart
+	# facility.
+	# 
+	# The sleep needs to be killed in the stop function.
+	#
+
+	### "disabling pmf" code begin
+
+	# if in_cluster
+	# then
+		# START_TIMEOUT=`standard_resource_get START_TIMEOUT`
+		# sleep ${START_TIMEOUT} &
+		# ${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc
+	# fi
+
+	### "disabling pmf" code end
+	#
+	# This should take care of sh, ksh, csh, tcsh and bash
+	#
+
+        
+        
+
+        # Check if root crontab file exists, else, create one
+        if [ ! -f ${CRONTABDIR}/root ]
+        then      
+                touch ${CRONTABDIR}/root
+                
+        fi
+        
+        # If for some weird reason, cron isn't already running, then set FLAG
+        if [ -z `ps -u root | awk '{print $NF}' | grep cron` ]
+        then
+                FLAG="WASOFFLINE"          
+        fi
+
+        # If Cron was already online, make a copy of the original file. Else, make
+        # only the backup and keep the new crontab file blank. This is because, if
+        # Cron was already offline, we don't want the cron jobs of the old crontab file
+        # to execute when HA-Cron starts the cron service again, and hence we'll add
+        # only the cron jobs of the resources in the RG.
+                
+        if [ -z ${FLAG} ]
+        then
+                /usr/bin/cp ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
+        else
+                /usr/bin/mv ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
+                touch ${CRONTABDIR}/root
+        fi
+		
+	# Write RG specific cron jobs to new root crontab
+	echo "" >>${CRONTABDIR}/root
+	echo "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" >> ${CRONTABDIR}/root
+	
+	cat ${RGCRONTAB} >> ${CRONTABDIR}/root
+	
+	# Add test job, which will be used to probe Cron
+	echo "" >>${CRONTABDIR}/root
+	echo "# Test job used for probing HA-Cron, DO NOT MODIFY" >> ${CRONTABDIR}/root
+	echo "* * * * * touch /tmp/crontest" >> ${CRONTABDIR}/root
+	
+	
+        # Create the test file for the probe, else, the current timestamp
+        # and the timestamp of last access of the test file might be
+        # greater than 60 seconds, leading to the probe reporting that
+        # Cron isn't running.
+        touch /tmp/crontest > ${LOGFILE} 2>&1
+	
+	
+        # Inform Cron about update
+        /usr/bin/crontab ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+        
+        
+	rc_start_command=$?
+	
+	if [ ${rc_start_command} -gt 0 ]
+	then
+        	debug_message "Function: start_cron - End"
+	        return ${rc_start_command}
+	fi
+        
+        debug_message "Function: start_cron - End"
+	return ${rc_start_command}
+}
+
+stop_cron()
+{
+	#
+	# Stop cron
+	#
+
+        debug_message "Function: stop_cron - Begin"
+	${SET_DEBUG}
+
+
+        # Remove new crontab file
+	/usr/bin/rm ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+	
+	# Replace it with backup
+	/usr/bin/mv ${CRONTABDIR}/root.old ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+
+        # Inform cron about update	
+        /usr/bin/crontab ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+	
+	# If cron was disabled before start, then leave it in the initial state
+	if [ ! -z "${FLAG}" ]
+	then
+	        /usr/bin/pkill cron > ${LOGFILE} 2>&1
+        fi
+
+
+	#
+	# if you disabled pmf in the in the start function, uncomment the
+	# $PMFADM line below this will guarantee, that there will be no process
+	# left under pmf control. It is meant to terminate the introduced
+	# backgrounded sleep, not as a replacement for a propper stop code.
+	#
+	
+	### "disabling pmf" code begin
+
+	# if in_cluster
+	# then
+		# ${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc KILL 2> /dev/null
+	# fi
+
+	### "disabling pmf" code end
+	
+
+	
+	debug_message "Function: stop_cron - End"
+	return ${rc_stop_command}
+}
+
+check_cron()
+{
+	# 
+	# Probe cron
+	#
+
+        debug_message "Function: check_cron - Begin"
+	${SET_DEBUG}
+
+	rc_check_cron=0
+
+        #
+        # If remote dependencies are needed for restart dependencies
+        # then uncomment the lines that starts with
+        # Remote dependency.
+
+        # You have to provide the code for checking if the dependent resource
+        # has been restarted in function check_restart_dependency()
+	#
+	# You probably have to increase the Probe_timeout value from the
+	# default value of 30 seconds.
+        #
+        # If needed add any options to the restart_dependency function call.
+        # The start_dependency function will call the check_restart_dependency
+        # function.
+
+        # Remote dependency
+        #
+        # restart_dependency # Add any options
+        #
+        # if [ ${?} -ne 0 ]; then
+        #       return 100
+        # fi
+        #
+
+	#
+	# This should take care of sh, ksh, csh, tcsh and bash
+	#
+
+	### sample code begin
+
+	# undefined variables:
+	# USERID
+	#
+	# define the variable above as a parameter to get a working example
+
+	#srm_function ${USERID}
+
+	#if getent passwd ${USERID} | awk -F: '{print $7}' | grep csh > /dev/null
+	#then
+	#	su ${USERID} -c "${TASK_COMMAND} check_command >& ${LOGFILE}" > /dev/null
+	#	rc_check_cron=${?}
+	#else
+	#	su ${USERID} -c "${TASK_COMMAND} check_command >${LOGFILE} 2>&1" > /dev/null
+	#	rc_check_cron=${?}
+	#fi
+
+	### sample code end
+
+        
+        # Compare current system time with time of last access of crontest file; if the difference is greater than 61, then error
+        
+        TIME1=`stat --printf %x /tmp/crontest` > ${LOGFILE} 2>&1
+        TIME1=${TIME1%.*}
+        TIME1=${TIME1#* }
+        S1=${TIME1#+([0-9]):+([0-9]):}
+        TIME1=${TIME1%:+([0-9])}
+        M1=${TIME1#+([0-9]):}
+        H1=${TIME1%:+([0-9])}
+        H1=${H1#0}
+        M1=${M1#0}
+        S1=${S1#0}
+
+        TIME2=`/usr/bin/date '+%H:%M:%S'` > ${LOGFILE} 2>&1
+        S2=${TIME2#+([0-9]):+([0-9]):}
+        TIME2=${TIME2%:+([0-9])}
+        M2=${TIME2#+([0-9]):}
+        H2=${TIME2%:+([0-9])}
+        H2=${H2#0}
+        M2=${M2#0}
+        S2=${S2#0}
+
+        ((TS1=H1*3600+M1*60+S1))
+        ((TS2=H2*3600+M2*60+S2))
+        ((TS1>TS2)) && ((TS2=TS2+86400))
+        
+        if [ $((TS2-TS1)) -lt 61 ]
+        then
+                rc_check_cron=0
+        else
+                scds_syslog -p daemon.err -t $(syslog_tag) -m \
+	                "Probe - Cron is unavailable"
+                rc_check_cron=100
+        fi
+
+	debug_message "Function: check_cron - End"
+	return ${rc_check_cron}
+}

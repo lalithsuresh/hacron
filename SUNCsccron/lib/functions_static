@@ -1,0 +1,492 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)functions_static	1.2	08/02/12 SMI"
+#
+
+TASK_COMMAND=""
+
+ZONENAME=/usr/bin/zonename
+
+SCLOGGER=/usr/cluster/lib/sc/scds_syslog
+LOGGER=/usr/bin/logger
+SCHA_RESOURCE_SETSTATUS=/usr/cluster/bin/scha_resource_setstatus
+SCHA_RESOURCE_GET=/usr/cluster/bin/scha_resource_get
+SCHA_RESOURCEGROUP_GET=/usr/cluster/bin/scha_resourcegroup_get
+PMFADM=/usr/cluster/bin/pmfadm
+UNAME=/usr/bin/uname
+ECHO=/usr/bin/echo
+AWK=/usr/bin/awk
+EGREP=/usr/bin/egrep
+PROJECTS=/usr/bin/projects
+
+terminate()
+{
+        debug_message "Function: terminate - Begin"
+        ${SET_DEBUG}
+
+	exiting_func=${1}
+	exit_code=${2}
+
+	# determine the right return code, it is either the return code from
+	# the functions or the appropriate smf return code
+
+	if in_cluster
+	then
+		
+		# called in a clustered global zone
+		
+		debug_message "Method: ${MYNAME} ${exiting_func} - End (${exit_code})"
+		exit ${exit_code}
+		
+	else
+		if [ -n "${SMF_FMRI}" ]
+		then
+			if [ "${exit_code}" -ne 0 ]
+			then
+			
+				# honour the gds specific probe values like
+				# 100 or 201
+				if [ "${exiting_func}" == "probe" -o "${exiting_func}" == "validate" ]
+				then
+					debug_message "Method: ${MYNAME} ${exiting_func} - End (${exit_code})"
+					exit ${exit_code}
+				else
+					debug_message "Method: ${MYNAME} ${exiting_func} - End (${SMF_EXIT_ERR_PERM})"
+					exit ${SMF_EXIT_ERR_PERM}
+				fi
+			fi
+			
+			debug_message "Method: ${MYNAME} ${exiting_func} - End (${SMF_EXIT_OK})"
+			exit ${SMF_EXIT_OK}
+		else
+			debug_message "Method: ${MYNAME} ${exiting_func} - End (${exit_code})"
+			exit ${exit_code}
+		fi
+	fi
+
+        debug_message "Function: terminate - End"
+}
+
+syslog_tag()
+{
+        #
+        # Data Service message format
+        #
+
+        ${SET_DEBUG}
+
+        print "SC[${PKG:-??}.${METHOD:-??}]:${RESOURCEGROUP:-??}:${RESOURCE:-??}"
+}
+
+scds_syslog()
+{
+
+        #
+        # Log a message
+        #
+
+        ${SET_DEBUG}
+
+	if [ -f ${SCLOGGER} ]
+	then
+		${SCLOGGER} "$@" &
+	else
+	
+		# eliminate the -m and honour -p and -t option
+		while getopts 'p:t:m' opt
+		do
+			case "${opt}" in
+				t) TAG=${OPTARG};;
+				p) PRI=${OPTARG};;
+			esac
+		done
+	
+		shift $((${OPTIND} - 1))
+		LOG_STRING=`/usr/bin/printf "$@"`
+	
+		${LOGGER} -p ${PRI} -t ${TAG} ${LOG_STRING}
+	fi
+}
+
+rgs_zonename()
+{
+	# Determine whether the host specified by uname -n is combined with a
+	# zonename in the current resourcegroups nodelist. The seperator beween
+	# nodename and zonename is ":".
+	#
+	# This function assumes the resource group name preset in the variable
+	# ${RESOURCEGROUP} and should be called 
+	#
+	# $(rgs_zonename) 
+	#
+	# It passes back the zonename or nothing. 
+
+        debug_message "Function: rg_zonename - Begin "
+        ${SET_DEBUG}
+
+	nodes_zone=
+	nodename=`${UNAME} -n`
+        node=`${SCHA_RESOURCEGROUP_GET} -G ${RESOURCEGROUP} -O NODELIST | grep ${nodename}`
+
+	if ${ECHO} ${node} | grep : >/dev/null 2>&1
+	then
+		nodes_zone=`${ECHO} ${node} | ${AWK} -F: '{print $2}'`
+		
+	fi
+
+	print ${nodes_zone}
+
+        debug_message "Function: rg_zonename - End "
+}
+
+debug_message()
+{
+        #
+        # Output a debug message to syslog if required
+        #
+
+	if [ -n "${DEBUG}" ]
+ 	then
+
+		# determine if we should display a message and do it
+
+		if [ "${DEBUG}" = "ALL" ]
+		then
+                	SET_DEBUG="set -x"
+
+                	DEBUG_TEXT=${1}
+
+                	scds_syslog -p daemon.debug -t $(syslog_tag) -m \
+                        "%s" "${DEBUG_TEXT}"
+		else
+
+			# Check if the actual resource matches one of the list
+			# of resources.
+			# If it matches, display a message.
+
+			DEBUG=`echo ${DEBUG}|tr "," " "`
+			for i in ${DEBUG}
+			do
+				if [ "${i}" = "${RESOURCE}" ]
+				then
+                			SET_DEBUG="set -x"
+
+                			DEBUG_TEXT=${1}
+
+                			scds_syslog -p daemon.debug -t $(syslog_tag) -m \
+                        		"%s" "${DEBUG_TEXT}"
+				fi
+			done
+		fi
+        else
+                SET_DEBUG=
+        fi
+}
+
+log_message()
+{
+        #
+        # Output a message to syslog as required
+        #
+
+        debug_message "Function: log_message - Begin"
+        ${SET_DEBUG}
+
+        if [ -s "${LOGFILE}" ]
+        then
+                PRIORITY=${1}
+                HEADER=${2}
+
+		# 
+		# Ensure the while loop only reads a closed file
+		#
+
+		strings ${LOGFILE} > ${LOGFILE}.copy
+                while read MSG_TXT
+                do
+                        scds_syslog -p daemon.${PRIORITY} -t $(syslog_tag) -m \
+                                "%s - %s" \
+                                "${HEADER}" "${MSG_TXT}"
+                done < ${LOGFILE}.copy
+
+        fi
+
+        debug_message "Function: log_message - End"
+}
+
+standard_resource_get()
+{
+        debug_message "Function: standard_resource_get - Begin"
+        ${SET_DEBUG}
+
+        PROPERTY=${1}
+
+        ${SCHA_RESOURCE_GET} -R ${RESOURCE} -G ${RESOURCEGROUP} -O ${PROPERTY}
+
+        s1=${?}
+
+        if [ "${s1}" -ne 0 ]; then
+                debug_message "standard_resource_get - Retrievment of property ${PROPERTY} returned ${s1}"
+        fi
+
+        debug_message "Function: standard_resource_get - End"
+        return ${s1}
+}
+
+standard_resourcegroup_get()
+{
+        debug_message "Function: standard_resourcegroup_get - Begin"
+        ${SET_DEBUG}
+
+        PROPERTY=${1}
+
+        ${SCHA_RESOURCEGROUP_GET} -G ${RESOURCEGROUP} -O ${PROPERTY}
+
+        s1=${?}
+
+        if [ "${s1}" -ne 0 ]; then
+                debug_message "standard_resourcegroup_get - Retrievment of property ${PROPERTY} returned ${s1}"
+        fi
+
+        debug_message "Function: standard_resourcegroup_get - End"
+
+        return ${s1}
+}
+
+srm_function()
+{
+        debug_message "Function: srm_function - Begin"
+        ${SET_DEBUG}
+
+        USER=${1}
+
+        #
+        # If Solaris 8 just return
+        #
+
+        if [ `/usr/bin/uname -r` = "5.8" ];
+        then
+                return 0
+        fi
+
+        #
+        # Retrieve RESOURCE_PROJECT_NAME
+        #
+
+	if in_cluster
+	then
+        	RESOURCE_PROJECT_NAME=`standard_resource_get RESOURCE_PROJECT_NAME`
+
+        	#
+        	# Retrieve RG_PROJECT_NAME if RESOURCE_PROJECT_NAME is not set
+        	#
+
+        	if [ -z "${RESOURCE_PROJECT_NAME}" ] || [ "${RESOURCE_PROJECT_NAME}" = "default" ]; then
+
+                	RESOURCE_PROJECT_NAME=`standard_resourcegroup_get RG_PROJECT_NAME`
+        	fi
+	else
+		RESOURCE_PROJECT_NAME=${ZONE_PROJECT}
+	fi
+
+        #
+        # Return if no projects are defined
+        #
+
+        if [ -z "${RESOURCE_PROJECT_NAME}" ] || [ "${RESOURCE_PROJECT_NAME}" = "default" ]; then
+                return 0
+        fi
+
+        #
+        # Validate that $USER belongs to the project defined by
+        # ${RESOURCE_PROJECT_NAME}
+        #
+
+        PROJ_MEMBER=`${PROJECTS} ${USER} | ${EGREP} "^${RESOURCE_PROJECT_NAME} | ${RESOURCE_PROJECT_NAME} | ${RESOURCE_PROJECT_NAME}$|^${RESOURCE_PROJECT_NAME}$"`
+
+        if [ -z "${PROJ_MEMBER}" ];
+        then
+             scds_syslog -p daemon.err -t $(syslog_tag) -m \
+                        "srm_function - The user %s does not belongs to project %s" \
+                        "${USER}" "${RESOURCE_PROJECT_NAME}" 
+                return 1
+        else
+                debug_message "srm_function - User ${USER} belongs to project ${RESOURCE_PROJECT_NAME}"
+        fi
+
+        #
+        # Set TASK_COMMAND
+        #
+
+        TASK_COMMAND="/usr/bin/newtask -p ${RESOURCE_PROJECT_NAME}"
+
+        debug_message "Function: srm_function - End"
+
+        return 0
+}
+
+zone_function()
+{
+	debug_message "Function: zone_function - Begin"
+	${SET_DEBUG}
+
+	#
+	# Initialize PZONEOPT as empty
+	PZONEOPT=""
+
+	#
+	# If Solaris does not have /usr/bin/zonename just return 0
+	# else add "-z <zonename>" to PZONEOPT
+	#
+
+	if [ -x "${ZONENAME}" ];
+	then
+		PZONEOPT="-z `${ZONENAME}`"
+	fi
+
+	debug_message "Function: zone_function - End"
+	return 0
+}
+
+in_cluster()
+{
+        #
+        # determine if we are started in a clustered global zone
+        #
+
+        debug_message "Function: in_cluster - Begin"
+        ${SET_DEBUG}
+	
+	in_cluster_val=0
+	
+	if [ ! -d /etc/cluster ]
+	then
+		in_cluster_val=1
+	fi	
+
+        debug_message "Function: in_cluster - End"
+	
+	return ${in_cluster_val}
+}
+
+start_dependency()
+{
+	debug_message "Function: start_dependency - Begin"
+	${SET_DEBUG}
+
+	# RETRIEVE START_TIMEOUT
+
+	if [-z "${ZONE_START_TIMOUT}" ]
+	then
+		START_TIMEOUT=`standard_resource_get START_TIMEOUT`
+	else
+		START_TIMEOUT=${ZONE_START_TIMOUT} 
+	fi
+
+	# 80 % OF THE START-TIMEOUT CAN BE SPEND ON WAITING
+
+	MAX_START_TIMEOUT=`expr ${START_TIMEOUT} \* 80 \/ 100`
+
+	# GET CURRENT TIME IN SEC ON 24H BASE
+		
+	CUR_HOUR=`date '+%H'`
+	CUR_MIN=`date '+%M'`
+	CUR_SEC=`date '+%S'`
+	CUR_TIME=`expr ${CUR_HOUR} \* 3600 + ${CUR_MIN} \* 60 + ${CUR_SEC}`
+
+	# RUN A TEST LOOP UNTIL THE DEPENDENT RESOURCE IS UP OR 
+	# A TIMEOUT HAS OCCURED
+
+	while [ 1 -eq 1 ]
+	do
+
+		# GET NEW CURRENT TIMEOUT
+		NEW_HOUR=`date '+%H'`
+		NEW_MIN=`date '+%M'`
+		NEW_SEC=`date '+%S'`
+		NEW_TIME=`expr ${NEW_HOUR} \* 3600 + ${NEW_MIN} \* 60 + ${NEW_SEC}`
+
+		# HAVE WE EXEEDED TIMEOUT
+
+		s1=`expr ${CUR_TIME} + ${MAX_START_TIMEOUT}`
+
+		if [ ${s1} -le ${NEW_TIME} ]; then
+			scds_syslog -p daemon.err -t $(syslog_tag) -m \
+       			"start_dependency: Exeeded ${MAX_START_TIMEOUT} seconds for waiting on dependent resource for resource ${RESOURCE} to come online"
+
+			St=1
+			break
+		fi
+
+		# CALL check_start_dependency
+
+		debug_message "Function: start_dependency - Call check_start_dependency function with argument "$*
+
+		check_start_dependency $*
+		St=$?
+
+		if [ ${St} -eq 0 ]; then
+		  St=0
+		  break
+		fi
+
+		# Wait 5 seconds
+
+		sleep 5
+	done
+
+
+	debug_message "Function: start_dependency - End"
+
+	return ${St}
+}
+
+restart_dependency()
+{
+	debug_message "Function: restart_dependency - Begin"
+	${SET_DEBUG}
+
+
+	# CALL check_restart_dependency
+
+	debug_message "Function: start_dependency - Call check_restart_dependency function with argument "$*
+	check_restart_dependency $*
+	St=$?
+
+	if [ ${St} -ne 0 ]; then
+           scds_syslog -p daemon.err -t $(syslog_tag) -m \
+           "restart_dependency - Dependent resource to resource %s has been restarted, restart this resource %s" \
+           "${RESOURCE}" "${RESOURCE}"
+
+	   St=100
+        else
+           St=0
+	fi
+
+	debug_message "Function: restart_dependency - End"
+
+	return ${St}
+}

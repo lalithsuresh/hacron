@@ -1,0 +1,284 @@
+#!/usr/bin/ksh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_smf_register	1.2	08/02/12 SMI"
+#
+
+MYDIR=/opt/SUNCsccron
+MYFILE=
+MYCONFIG=
+MANIFEST_DIR=/var/svc/manifest/application/sczone-agents
+
+#############################################################
+# create_xml()
+#
+# This function creates the xml manifest that will get called 
+# by SMF, i.e. svcadm enable <service> . This allows the SMF
+# service to be called in a zone by the 
+#
+# 	Sun Cluster Data Service for Solaris Container
+#	- sczsmf component
+#
+#############################################################
+
+create_xml()
+{
+	MYDIR=$1
+	MYFILE=$2
+
+	if [ ! -d "${MANIFEST_DIR}" ]
+	then
+		mkdir -p ${MANIFEST_DIR}
+	fi
+		
+	cat > ${MANIFEST_DIR}/${MYFILE}.xml <<-EOF
+	<?xml version="1.0"?>
+	<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+
+	<!--
+	#
+	# CDDL HEADER START
+	#
+	# The contents of this file are subject to the terms of the
+	# Common Development and Distribution License (the License).
+	# You may not use this file except in compliance with the License.
+	#
+	# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+	# or http://www.opensolaris.org/os/licensing.
+	# See the License for the specific language governing permissions
+	# and limitations under the License.
+	#
+	# When distributing Covered Code, include this CDDL HEADER in each
+	# file and include the License file at <packagename>/CDDL.txt.
+	# If applicable, add the following below this CDDL HEADER, with the
+	# fields enclosed by brackets [] replaced with your own identifying
+	# information: Portions Copyright [yyyy] [name of copyright owner]
+	#
+	# CDDL HEADER END
+	#
+
+	#
+	# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+	# Use is subject to license terms.
+	#
+	# ident	"@(#)cron_smf_register	1.2	08/02/12 SMI"
+	#
+	-->
+
+	<service_bundle type='manifest' name='${MYFILE}'>
+
+	<service
+	name='application/sczone-agents'
+	type='service'
+	version='1'>
+
+	<!--
+	    Common dependencies for the service
+	-->
+
+	<dependency name='cron_services'
+	grouping='require_all'
+	restart_on='none'
+	type='service'>
+		<service_fmri value='svc:/milestone/multi-user-server'/>
+		<service_fmri value='svc:/network/loopback'/>
+	</dependency>
+
+	<instance name='${MYFILE}' enabled='false'>
+
+	<!--
+	    Instance specific dependencies allows for multiple instances
+	    add application specific path dependencies here
+	-->
+
+	<!--
+
+	### example dependency begin
+
+	<dependency name='cron_paths'
+	grouping='require_all'
+	restart_on='none'
+	type='path'>
+		<service_fmri value='file:///opt'/>
+	</dependency>
+
+	### example dependency end
+	-->
+
+	<exec_method
+	type='method'
+	name='start'
+	exec='${MYDIR}/bin/control_cron start'
+	timeout_seconds='300' >
+	<method_context project='${PROJECT}' >
+		<method_credential user='${ZUSER}' />
+	</method_context>
+	</exec_method>
+
+	<exec_method
+	type='method'
+	name='stop'
+	exec='${MYDIR}/bin/control_cron stop'
+	timeout_seconds='300' >
+	<method_context project='${PROJECT}' >
+		<method_credential user='${ZUSER}' />
+	</method_context>
+	</exec_method>
+
+
+	<!--
+
+	Here are some examples of the restart and process monitoring of smf.
+
+	If you specify nothing, your manifest expects a process tree which is
+	monitored.
+	A restart will occur on HW errors, if the complete tree disappears and
+	if processes are killed, exit abnormally or throw a core dump.
+
+	However this is tunable.
+
+	To tune it, you need to specify specifig values for the startd property
+	group. 
+
+	To have a manifest which does not care at all about processes use the
+	following:
+
+	<property_group name='startd' type='framework'>
+       		 <propval name='duration' type='astring' value='transient'/>
+	</property_group>
+
+	To have a manifest which does not restart on cordumps or abnormal
+	process termination use the following:
+
+	<property_group name='startd' type='framework'>
+       		 <propval name='ignore_error' type='astring' value='core,signal' />
+	</property_group>
+
+	For additional information start with man svc.startd
+
+	-->
+
+	<!--
+	    Instance specific parameters
+
+	    add as many as you need, one per option
+
+	-->
+
+        <property_group name='parameters' type='general'>
+        <propval name='Resource' type='astring' value='$RS'/>
+        <propval name='Resource_group' type='astring' value='$RG'/>
+	</property_group>
+
+	</instance>
+
+	<stability value='Evolving' />
+
+	<template>
+	<common_name>
+	<loctext xml:lang='C'>
+	Application cron
+	</loctext>
+	</common_name>
+	</template>
+	</service>
+
+	</service_bundle>
+
+	EOF
+}
+
+typeset opt
+
+while getopts 'f:' opt
+do
+        case "${opt}" in
+                f)      MYCONFIG=${OPTARG};;
+                *)      exit 1;;
+        esac
+done
+
+# Sourcing the specified config file, either the default one,
+# or the one supplied with -f
+
+if [ -n "${MYCONFIG}" ] && [ -f "${MYCONFIG}" ]
+then
+        echo "sourcing ${MYCONFIG}"
+        . ${MYCONFIG}
+else
+        PKGCONF=`dirname $0`/cron_config
+        echo "sourcing ${PKGCONF}"
+        . ${PKGCONF}
+fi
+
+# checking and predefining user and project, if they are not set
+
+if [ -z "${PROJECT}" ]
+then
+	PROJECT=:default
+fi
+
+if [ -z "${ZUSER}" ]
+then
+	ZUSER=root
+fi
+
+
+MYFILE=${RS}
+
+if create_xml $MYDIR $MYFILE
+then
+	printf "${MANIFEST_DIR}/${MYFILE}.xml successfully created\n"
+else
+	printf "${MANIFEST_DIR}/${MYFILE}.xml failed\n"
+	exit 1
+fi
+
+if /usr/sbin/svccfg validate ${MANIFEST_DIR}/${MYFILE}.xml
+then
+	printf "${MANIFEST_DIR}/${MYFILE}.xml successfully validated\n"
+else
+	exit 1
+fi
+	
+if /usr/sbin/svccfg import ${MANIFEST_DIR}/${MYFILE}.xml
+then
+	printf "${MANIFEST_DIR}/${MYFILE}.xml successfully imported\n"
+else
+	exit 1
+fi
+
+# Validate the parameters of the cron resource
+
+if  ${MYDIR}/bin/control_cron validate svc:/application/sczone-agents:${RS}
+then
+	echo " validation of the cron smf service svc:/application/sczone-agents:${RS} successful"
+else
+	echo " validation of the cron smf service svc:/application/sczone-agents:${RS} failed, fix the errors and retry"
+	exit 1
+fi
+
+exit 0

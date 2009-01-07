@@ -1,0 +1,78 @@
+#!/bin/ksh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_smf_remove	1.2	08/02/12 SMI"
+#
+#
+#  This script to remove an smf service and its manifast takes 
+#  the optional -f option
+#
+#  -f filename states a config file different from cron_config.
+#     This file will be sourced instead of cron_config if -f filename is 
+#     specified.
+
+
+
+MYCONFIG=
+MANIFEST_DIR=/var/svc/manifest/application/sczone-agents
+
+typeset opt
+
+while getopts 'f:z:' opt
+do
+        case "${opt}" in
+                f)      MYCONFIG=${OPTARG};;
+                *)      exit 1;;
+        esac
+done
+
+# Sourcing the specified config file, either the default one,
+# or the one supplied with -f
+
+if [ -n "${MYCONFIG}" ] && [ -f "${MYCONFIG}" ]
+then
+	echo "sourcing ${MYCONFIG}"
+	. ${MYCONFIG}
+else
+	PKGCONF=`dirname $0`/cron_config
+	echo "sourcing ${PKGCONF}"
+	. ${PKGCONF}
+fi
+
+# Rewmoving the smf service and its manifest
+
+SERVICE_TAG=svc:/application/sczone-agents:${RS}
+
+echo "disabeling the smf service ${SERVICE_TAG}"
+/usr/sbin/zlogin ${ZONE} svcadm disable ${SERVICE_TAG}
+
+echo "removing the smf service ${SERVICE_TAG}"
+/usr/sbin/zlogin ${ZONE} svccfg delete ${SERVICE_TAG}
+
+echo "removing the smf manifest ${MANIFEST_DIR}/${RS}.xml"
+/usr/sbin/zlogin ${ZONE} rm ${MANIFEST_DIR}/${RS}.xml
+
+exit 0

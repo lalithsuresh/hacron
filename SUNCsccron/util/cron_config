@@ -1,0 +1,80 @@
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_config	1.2	08/02/12 SMI"
+#
+# This file will be sourced in by cron_register and the parameters
+# listed below will be used.
+#
+# These parameters can be customized in (key=value) form
+#
+#                RS - name of the resource for the application
+#                RG - name of the resource group containing RS
+#              PORT - name of the port number
+#                LH - name of the LogicalHostname SC resource
+#            HAS_RS - name of the HAStoragePlus SC resource
+#
+# The following variables need to be set only if the agent runs in a 
+# local zone
+#
+#              ZONE - Zonename where the zsh or zsmf component should 
+#                     registered
+#           ZONE_BT - Resource name of the zone boot component
+#           PROJECT - A project in the zone, that will be used for this service.
+#                     Specify it if you have an su - in the start stop or probe,
+#                     or to define the smf credentials. If the variable is not
+#                     set, it will be translated as :default for the smf and
+#                     default for the zsh component
+#                     Optional
+#             ZUSER - A user in the the zone which is used for the smf method 
+#                     credentials. Your smf servic e will run under this user
+#                     Optional
+#
+# The parameter directory needs to be set only if you register with 
+# the zsh component.
+# 
+#         PARAM_DIR - Directory where the zsh component creates its parameter
+#                    files
+#     START_TIMEOUT - A numeric value, that a start dependent sevice can last
+#                    Optional
+#
+
+RS=
+RG=
+PORT=
+LH=
+HAS_RS=
+
+# local zone specific options
+
+ZONE=
+ZONE_BT=
+ZUSER=
+PROJECT=
+
+# options specific to the zsh component
+
+PARAM_DIR=
+START_TIMEOUT=

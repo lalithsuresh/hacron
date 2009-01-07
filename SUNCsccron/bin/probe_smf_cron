@@ -1,0 +1,69 @@
+#!/usr/bin/ksh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)probe_smf_cron	1.2	08/02/12 SMI"
+#
+# This method is called by the optional probe script of the smf method 
+#
+# Method for the cron agents smf manifest. It is called from the control script
+# only if it is an smf probe and the project in the smf service is not :default.
+# This assures that most of the probe is running under the correct project.
+#
+# It is startet with 1 parameter
+#
+# $1 ist the SMF_FMRI identifier which specifies the smf service
+#
+
+MYNAME=`basename ${0}`
+MYDIR=`dirname ${0}`
+
+if [ -f /lib/svc/share/smf_include.sh ]
+then
+	. /lib/svc/share/smf_include.sh
+fi
+
+. ${MYDIR}/../etc/config
+. ${MYDIR}/../lib/functions_static
+. ${MYDIR}/functions
+
+debug_message "Method: ${MYNAME} ${1} - Begin"
+${SET_DEBUG}
+
+# Setting SMF_FMRI 
+        
+SMF_FMRI=${1}	
+
+# Getting the necessary parameters and filling in the variables provided
+# by options, if it is called in the global zone.
+
+get_fmri_parameters
+
+# perform the check
+check_cron
+rc_val=${?}
+
+debug_message "Method: ${MYNAME} ${1} - End"
+exit ${rc_val}

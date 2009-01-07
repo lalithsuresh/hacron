@@ -1,0 +1,432 @@
+#!/bin/ksh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_register	1.2	08/02/12 SMI"
+#
+#  This script takes 2 options, both are optional.
+#  -f filename states a config file different from cron_config.
+#     This file will be sourced instead of cron_config if -f filename is
+#     specified.
+#
+#  -z smf/zsh 
+#     This option is used for local zone instances only. smf stands for a 
+#     Sun Cluster Agent for Containder SMF Component, zsh stands for the 
+#     zsh component.
+
+
+# Set generic variables:
+
+BINDIR=/opt/SUNCsccron/bin
+UTILDIR=/opt/SUNCsccron/util
+SMFUTILDIR=/opt/SUNWsczone/sczsmf/util
+ZSHUTILDIR=/opt/SUNWsczone/sczsh/util
+
+global_zone()
+{
+
+	# function to register a resource in the global zone or on solaris 8/9
+
+	# define your start, stop, probe an validate command
+
+	start_command="${BINDIR}/control_cron -R ${RS} -G ${RG} start"
+	stop_command="${BINDIR}/control_cron -R ${RS} -G ${RG} stop"
+	probe_command="${BINDIR}/control_cron -R ${RS} -G ${RG} probe"
+	validate_command="${BINDIR}/control_cron -R ${RS} -G ${RG} validate"
+
+	# register your resource
+
+	if /usr/cluster/bin/scrgadm -pvv -t SUNW.gds | /usr/bin/grep Validate_command>/dev/null 2>&1
+	then
+ 
+		# register in 3.2 style
+
+		# include the logical host in the resource dependencies if
+		# appropriate
+
+		Dependencies=${HAS_RS}
+		if [ -n "${Dependencies}" ]
+		then
+			Dependencies=${LH},${Dependencies}
+		else
+			Dependencies=${LH}
+		fi
+
+		/usr/cluster/bin/clresource create -g ${RG} -t SUNW.gds \
+		-p Start_command="${start_command}" \
+		-p Stop_command="${stop_command}" \
+		-p Probe_command="${probe_command}" \
+		-p Validate_command="${validate_command}" \
+		-p Port_list=${PORT}/tcp \
+		-p Stop_signal=9 \
+		-p Resource_dependencies=${Dependencies} \
+		${RS} 
+
+	St=$?
+	
+	else
+
+		# register in 3.1 style
+ 
+		/usr/cluster/bin/scrgadm -a -j ${RS} -g ${RG} -t SUNW.gds \
+		-x Start_command="${start_command}" \
+		-x Stop_command="${stop_command}" \
+		-x Probe_command="${probe_command}" \
+		-y Port_list=${PORT}/tcp -y Network_resources_used=${LH} \
+		-x Stop_signal=9 \
+		-y Resource_dependencies=${HAS_RS}
+	
+		St=$?
+	fi
+
+
+	if [ "${St}" -ne 0 ]; then
+	        echo "Registration of resource ${RS} failed, please correct the wrong parameters."
+	
+	        return 1
+	else
+	        echo "Registration of resource ${RS} succeeded."
+	fi
+	
+	# validate the resource only, if the validate command is not present
+	
+	if ! /usr/cluster/bin/scrgadm -pvv -t SUNW.gds | /usr/bin/grep Validate_command>/dev/null 2>&1
+	then	
+
+		echo "Validate resource ${RS} in resourcegroup ${RG}"
+
+		# determine wether the resource runs in the global zone or in a
+		# prepared zone and set the zcommand to the appropriat zlogin
+		# comand
+
+		zcommand=
+		rgs_zone=$(rgs_zonename)
+		if [ -n "${rgs_zone}" ]
+		then
+			zcommand="/usr/sbin/zlogin ${rgs_zone} "
+		fi
+
+		# validate the contents of the parameter file
+
+		${zcommand} ${validate_command}
+
+                St=$?
+		
+		if [ "${St}" -ne 0 ]; then
+		        echo "Validation of resource ${RS} failed, please correct the wrong parameters."
+		        echo "Removing resource ${RS} from the cluster configuration."
+		
+		        /usr/cluster/bin/scrgadm -r -j ${RS}
+		
+		        return 1
+		else
+		        echo "Validation of resource ${RS} succeeded."
+		fi
+	fi
+
+}
+
+local_zone_smf()
+{
+
+# function to register a smf resource
+
+	SERVICE_TAG=svc:/application/sczone-agents:${RS}
+
+	if [ ! -f ${SMFUTILDIR}/sczsmf_config ]
+	then
+		echo  ${SMFUTILDIR}/sczsmf_config does not exist. Make sure, that \
+		      Sun Cluster HA for Solaris container is intalled in the global zone
+		return 1
+	fi
+
+# prepare the config file
+
+	cp ${SMFUTILDIR}/sczsmf_config ${SMFUTILDIR}/sczsmf_config.work
+	cat << EOF > ${SMFUTILDIR}/sczsmf_config 
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_register	1.2	08/02/12 SMI"
+#
+# This file will be sourced in by sczsmf_register and the parameters
+# listed below will be used.
+#
+# These parameters can be customized in (key=value) form
+#
+#               RS - Name of the resource
+#               RG - Name of the resource group containing RS
+#         SCZBT_RS - Name of the SC Zone boot resource
+#             ZONE - Name of the Zone
+#
+#       For SERVICE, RECURSIVE and STATE, refer to the svcadm(1M) man page
+#
+#          SERVICE - {FMRI | pattern}
+#               FMRI - Fault management resource identifier
+#               pattern - Pattern matching a service
+#
+#        RECURSIVE - {false | true}     Default: true
+#               False - Just enable the service and no dependents
+#               True -  Enable the service and recursively enable
+#                       its dependents
+#
+#               RECURSIVE=true equates to svcadm enable "-r"
+#
+#            STATE - {false | true}     Default: true
+#               False - Do not wait until service state is reached
+#               True  - Wait until service state is reached
+#
+#               STATE=true equates to svcadm enable/disable "-s"
+#
+#    SERVICE_PROBE - Script to check the SMF service
+#
+#               The optional parameter, SERVICE_PROBE, provides the
+#                 ability to check that the SMF service is working.
+#                 This must be a script within the zone and must
+#                 adhere to these return codes,
+#
+#                 0 - The SMF service is working
+#               100 - The SMF service should be restarted
+#               201 - The SMF service should initiate a failover of
+#                       the Resource Group
+#
+#               Note: That return code 201, requires that this resource
+#                 has an appropriate extension property value for
+#                 FAILOVER_MODE and FAILOVER_ENABLED=TRUE
+#
+#               For FAILOVER_MODE refer to the r_properties(5) man page.
+#
+
+RS=${RS}
+RG=${RG}
+SCZBT_RS=${ZONE_BT}
+ZONE=${ZONE}
+SERVICE=${SERVICE_TAG}
+RECURSIVE=false
+STATE=true
+SERVICE_PROBE="${BINDIR}/control_cron probe ${SERVICE_TAG}"
+  
+EOF
+
+	# determine if a working copy of the config file was created if yes use
+	# the -f option
+
+	REGOPT=""
+	if [ -f ${UTILDIR}/cron_config.work ]
+	then
+	        /usr/bin/cat ${UTILDIR}/cron_config.work | /usr/sbin/zlogin ${ZONE} /usr/bin/cat - \>/tmp/cron_config.work 
+	else
+	        /usr/bin/cat ${UTILDIR}/cron_config | /usr/sbin/zlogin ${ZONE} /usr/bin/cat - \>/tmp/cron_config.work 
+	fi
+	REGOPT="-f /tmp/cron_config.work"
+
+        echo clean up the manifest / smf resource
+        ${UTILDIR}/cron_smf_remove ${REGOPT} 2>/dev/null
+
+	# register the manifest
+
+	if /usr/sbin/zlogin ${ZONE} ${UTILDIR}/cron_smf_register ${REGOPT}
+	then
+		echo "Manifest svc:/application/sczone-agents:${RS} was created in zone ${ZONE}"
+		echo "Registering the zone smf resource"
+		ksh ${SMFUTILDIR}/sczsmf_register
+		ret_code=${?}
+                mv ${SMFUTILDIR}/sczsmf_config.work ${SMFUTILDIR}/sczsmf_config
+	else
+		echo "The registration of the manifest did not complete, fix the errors and retry"
+		ret_code=0
+	fi
+	return ${ret_code}
+}
+
+local_zone_zsh()
+{
+	# function to register a zsh resource
+
+	if [ ! -f ${SMFUTILDIR}/sczsmf_config ]
+	then
+		echo  ${SMFUTILDIR}/sczsmf_config does not exist. Make sure, that \
+		      Sun Cluster HA for Solaris container is intalled in the global zone
+		return 1
+	fi
+
+
+	# set the optional PROJ_OPT variable
+
+	PROJ_OPT=
+	if [ -n "${PROJECT}" ]
+	then
+		PROJ_OPT="-P ${PROJECT}"
+	fi
+
+	# set the optional STARTTIM_OPT variable
+
+	STARTTIM_OPT=
+	if [ -n "${START_TIMEOUT}" ]
+	then
+		STARTTIM_OPT="-S ${START_TIMEOUT}"
+	fi
+
+	# prepare the config file
+
+	cp ${ZSHUTILDIR}/sczsh_config ${ZSHUTILDIR}/sczsh_config.work
+	cat << EOF > ${ZSHUTILDIR}/sczsh_config
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the License).
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at SUNCsc_template/CDDL.txt
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at <packagename>/CDDL.txt.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets [] replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
+# Use is subject to license terms.
+#
+# ident	"@(#)cron_register	1.2	08/02/12 SMI"
+#
+# This file will be sourced by sczsh_register and the parameters
+# listed below will be used.
+#
+# These parameters can be customized in (key=value) form
+#
+#                  RS - Name of the resource
+#                  RG - Name of the resource group containing RS
+#            SCZBT_RS - Name of the SC Zone boot resource
+#        PARAMETERDIR - Name of the parameter file directory
+#            Zonename - Name of the zone
+# ServiceStartCommand - Command including all options to start
+#                        the service in the configured zone
+#  ServiceStopCommand - Command including all options to stop
+#                        the service in the configured zone
+# ServiceProbeCommand - Command including all options to probe
+#                        the service in the configured zone
+#
+RS=${RS}
+RG=${RG}
+SCZBT_RS=${ZONE_BT}
+PARAMETERDIR=${PARAM_DIR}
+#
+# The following parameters will be put in the agents parameterfile:
+#
+Zonename=${ZONE}
+ServiceStartCommand="${BINDIR}/control_cron \
+        -R ${RS} -G ${RG} ${STARTTIM_OPT} $PROJ_OPT start"
+ServiceStopCommand="${BINDIR}/control_cron \
+        -R ${RS} -G ${RG} ${STARTTIM_OPT} $PROJ_OPT stop"
+ServiceProbeCommand="${BINDIR}/control_cron \
+        -R ${RS} -G ${RG} ${STARTTIM_OPT} $PROJ_OPT probe"
+
+EOF
+
+	echo "Registering the zone zsh resource"
+
+	ksh ${ZSHUTILDIR}/sczsh_register
+	ret_code=${?}
+        mv ${ZSHUTILDIR}/sczsh_config.work ${ZSHUTILDIR}/sczsh_config
+	return ${?}
+
+}
+
+MYCONFIG=
+ZONETYPE=global
+
+typeset opt
+
+while getopts 'f:z:' opt
+do
+        case "${opt}" in
+                f)      MYCONFIG=${OPTARG};;
+                z)      ZONETYPE=${OPTARG};;
+                *)      echo "ERROR: ${MYNAME} Option ${OPTARG} unknown - early End. Only -z smf/zsh and -f are valid"
+                        exit 1;;
+        esac
+done
+
+# Sourcing the specified config file, either the default one,
+# or the one supplied with -f
+
+if [ -n "${MYCONFIG}" ] && [ -f "${MYCONFIG}" ]
+then
+	echo "sourcing ${MYCONFIG} and create a working copy under ${UTILDIR}/cron_config.work"
+	cp ${MYCONFIG} ${UTILDIR}/cron_config.work
+	. ${MYCONFIG}
+else
+	PKGCONF=`dirname $0`/cron_config
+	echo "sourcing ${PKGCONF}"
+	. ${PKGCONF}
+fi
+
+# Registering the resource
+
+case "${ZONETYPE}" in
+	global) global_zone;;
+	smf) local_zone_smf;;
+	zsh) local_zone_zsh;;
+	*) echo " error: use zsh or smf only for the -z option or omit -z for the global zone";;
+esac
+
+if [ -f ${UTILDIR}/cron_config.work ]
+then
+        echo " remove the working copy ${UTILDIR}/cron_config.work"
+	rm ${UTILDIR}/cron_config.work
+fi
+
+exit 0
