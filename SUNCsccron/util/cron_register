@@ -79,6 +79,7 @@ global_zone()
 		-p Stop_command="${stop_command}" \
 		-p Probe_command="${probe_command}" \
 		-p Validate_command="${validate_command}" \
+		-p Network_aware=false \
 		-p Port_list=${PORT}/tcp \
 		-p Stop_signal=9 \
 		-p Resource_dependencies=${Dependencies} \

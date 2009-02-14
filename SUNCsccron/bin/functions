@@ -234,12 +234,12 @@ start_cron()
 
 	### "disabling pmf" code begin
 
-	# if in_cluster
-	# then
-		# START_TIMEOUT=`standard_resource_get START_TIMEOUT`
-		# sleep ${START_TIMEOUT} &
-		# ${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc
-	# fi
+	if in_cluster
+	then
+		START_TIMEOUT=`standard_resource_get START_TIMEOUT`
+		sleep ${START_TIMEOUT} &
+		${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc
+	fi
 
 	### "disabling pmf" code end
 	#
@@ -346,10 +346,10 @@ stop_cron()
 	
 	### "disabling pmf" code begin
 
-	# if in_cluster
-	# then
-		# ${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc KILL 2> /dev/null
-	# fi
+	if in_cluster
+	then
+		${PMFADM} -s ${RESOURCEGROUP},${RESOURCE},0.svc KILL 2> /dev/null
+	fi
 
 	### "disabling pmf" code end
 	
