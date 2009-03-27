@@ -262,6 +262,9 @@ start_cron()
                 FLAG="WASOFFLINE"          
         fi
 
+
+	# FIXME: This sucks!
+
         # If Cron was already online, make a copy of the original file. Else, make
         # only the backup and keep the new crontab file blank. This is because, if
         # Cron was already offline, we don't want the cron jobs of the old crontab file
