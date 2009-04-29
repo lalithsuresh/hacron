@@ -63,9 +63,7 @@
 
 RS=
 RG=
-PORT=
-LH=
-HAS_RS=
+RGCRONTAB=
 
 # local zone specific options
 

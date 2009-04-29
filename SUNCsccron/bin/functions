@@ -243,11 +243,7 @@ start_cron()
 	fi
 
 	### "disabling pmf" code end
-	#
-	# This should take care of sh, ksh, csh, tcsh and bash
-	#
-
-        
+	        
         
 
         # Check if root crontab file exists, else, create one
@@ -264,33 +260,39 @@ start_cron()
         fi
 
 
-	# FIXME: This sucks!
-
         # If Cron was already online, make a copy of the original file. Else, make
         # only the backup and keep the new crontab file blank. This is because, if
         # Cron was already offline, we don't want the cron jobs of the old crontab file
         # to execute when HA-Cron starts the cron service again, and hence we'll add
         # only the cron jobs of the resources in the RG.
                 
-        if [ -z ${FLAG} ]
-        then
-                /usr/bin/cp ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
-        else
-                /usr/bin/mv ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
-                touch ${CRONTABDIR}/root
-        fi
+	if [[ -z `/usr/bin/fgrep "# Added by HA-Cron resource" ${CRONTABDIR}/root`  ]] 
+ 	then  		
+		if [ -z ${FLAG} ]
+        	then
+			/usr/bin/cp ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
+        	else
+			/usr/bin/mv ${CRONTABDIR}/root ${CRONTABDIR}/root.old > ${LOGFILE} 2>&1
+        	        touch ${CRONTABDIR}/root
+        	fi
+	fi
+
+	if [[ -z `/usr/bin/fgrep -x "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" ${CRONTABDIR}/root` ]]
+		then
+			# Write RG specific cron jobs to new root crontab
+			echo "" >>${CRONTABDIR}/root
+			echo "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" >> ${CRONTABDIR}/root
 		
-	# Write RG specific cron jobs to new root crontab
-	echo "" >>${CRONTABDIR}/root
-	echo "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" >> ${CRONTABDIR}/root
-	
-	cat ${RGCRONTAB} >> ${CRONTABDIR}/root
-	
-	# Add test job, which will be used to probe Cron
-	echo "" >>${CRONTABDIR}/root
-	echo "# Test job used for probing HA-Cron, DO NOT MODIFY" >> ${CRONTABDIR}/root
-	echo "* * * * * touch /tmp/crontest" >> ${CRONTABDIR}/root
-	
+			cat ${RGCRONTAB} >> ${CRONTABDIR}/root
+		
+			if [[ -z `fgrep "# Test job used for probing HA-Cron, DO NOT MODIFY" ${CRONTABDIR}/root` ]]
+			then		
+				# Add test job, which will be used to probe Cron
+				echo "" >>${CRONTABDIR}/root
+				echo "# Test job used for probing HA-Cron, DO NOT MODIFY" >> ${CRONTABDIR}/root
+				echo "* * * * * touch /tmp/crontest" >> ${CRONTABDIR}/root
+		fi
+	fi
 	
         # Create the test file for the probe, else, the current timestamp
         # and the timestamp of last access of the test file might be
@@ -325,15 +327,27 @@ stop_cron()
 	${SET_DEBUG}
 
 
-        # Remove new crontab file
-	/usr/bin/rm ${CRONTABDIR}/root > ${LOGFILE} 2>&1
-	
-	# Replace it with backup
-	/usr/bin/mv ${CRONTABDIR}/root.old ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+	/usr/bin/fgrep -xv "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" ${CRONTABDIR}/root | /usr/bin/fgrep -xvf ${RGCRONTAB} > ${CRONTABDIR}/temp
 
-        # Inform cron about update	
-        /usr/bin/crontab ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+	/usr/bin/mv ${CRONTABDIR}/temp ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+
+	/usr/bin/rm ${CRONTABDIR}/temp > ${LOGFILE} 2>&1
+
+	if [[ `/usr/bin/fgrep -c "# Added by HA-Cron resource in" ${CRONTABDIR}/root` -eq 0 ]]
+	then
+
+		/usr/bin/mv ${CRONTABDIR}/root.old ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+
+		#/usr/bin/fgrep -xv "# Test job used for probing HA-Cron, DO NOT MODIFY" ${CRONTABDIR}/root | /usr/bin/fgrep -xv "* * * * * touch /tmp/crontest" > ${CRONTABDIR}/temp
+
+		#/usr/bin/mv ${CRONTABDIR}/temp ${CRONTABDIR}/root > ${LOGFILE} 2>&1
 	
+		#/usr/bin/rm ${CRONTABDIR}/temp > ${LOGFILE} 2>&1
+
+	        # Inform cron about update
+	        /usr/bin/crontab ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+	fi
+
 	# If cron was disabled before start, then leave it in the initial state
 	if [ ! -z "${FLAG}" ]
 	then

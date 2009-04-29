@@ -51,10 +51,10 @@ global_zone()
 
 	# define your start, stop, probe an validate command
 
-	start_command="${BINDIR}/control_cron -R ${RS} -G ${RG} start"
-	stop_command="${BINDIR}/control_cron -R ${RS} -G ${RG} stop"
-	probe_command="${BINDIR}/control_cron -R ${RS} -G ${RG} probe"
-	validate_command="${BINDIR}/control_cron -R ${RS} -G ${RG} validate"
+	start_command="${BINDIR}/control_cron -R ${RS} -G ${RG} -C ${RGCRONTAB} start"
+	stop_command="${BINDIR}/control_cron -R ${RS} -G ${RG} -C ${RGCRONTAB} stop"
+	probe_command="${BINDIR}/control_cron -R ${RS} -G ${RG} -C ${RGCRONTAB} probe"
+	validate_command="${BINDIR}/control_cron -R ${RS} -G ${RG} -C ${RGCRONTAB} validate"
 
 	# register your resource
 
@@ -80,7 +80,6 @@ global_zone()
 		-p Probe_command="${probe_command}" \
 		-p Validate_command="${validate_command}" \
 		-p Network_aware=false \
-		-p Port_list=${PORT}/tcp \
 		-p Stop_signal=9 \
 		-p Resource_dependencies=${Dependencies} \
 		${RS} 
@@ -95,7 +94,6 @@ global_zone()
 		-x Start_command="${start_command}" \
 		-x Stop_command="${stop_command}" \
 		-x Probe_command="${probe_command}" \
-		-y Port_list=${PORT}/tcp -y Network_resources_used=${LH} \
 		-x Stop_signal=9 \
 		-y Resource_dependencies=${HAS_RS}
 	
