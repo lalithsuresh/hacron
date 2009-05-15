@@ -2,4 +2,31 @@ HA-Cron: A high availability agent for Cron
 
 Version: 1.0.0
 
-For instructions regarding HA-Cron, it's installation and usage, please reger to the reference manual.
+
+
+1.Installation
+
+1.1 Installing from the source:
+
+You may download the latest source form haron.dev.java.net. Once you've done so, simply copy the SUNCsccron folder to /opt :
+
+	#: cd <path-to-SUNCsccron-folder>
+	#: cp -r SUNCsccron /opt
+
+
+2. Usage
+
+2.1. Create a file and add the RG specific cron entries to it.
+
+2.2. To add the Cron resource to a resource group, just edit the file in /opt/SUNCsccron/utils/cron_config, and modify the following parameters accordingly:
+
+a) RS : This is the name of your HA-Cron resource when you add it to the RG.
+b) RG : This is the name of the resource group into which you're going to add HA-Cron to.
+c) RGCRONTAB : This is the path to the RG specific crontab file where the user specifies all the jobs specific to the resource group that is to be kept highly available.
+
+2.3. If you don't wish to view any debug details, you can set the DEBUG option in /opt/SUNCsccron/etc/config to blank. For debug info, set DEBUG to ALL.
+
+2.4. The next step would be to register the resource. You can do that by running the cron_register script present in the util directory:
+
+	#: /opt/SUNCsccron/util/cron_register
+
