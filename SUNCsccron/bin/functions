@@ -247,7 +247,7 @@ start_cron()
         
 	# Place purifier script
 
-	/usr/bin/mv ${MYDIR}/Scronpurify /etc/rc3.d/
+	/usr/bin/cp ${MYDIR}/Scronpurify /etc/rc3.d/
 
 	/usr/bin/chmod 744 /etc/rc3.d/Scronpurify
 
