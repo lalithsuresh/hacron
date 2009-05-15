@@ -36,6 +36,7 @@ SCLOGGER=/usr/cluster/lib/sc/scds_syslog
 PMFADM=/usr/cluster/bin/pmfadm
 
 CRONTABDIR=/var/spool/cron/crontabs
+MYDIR=`dirname ${0}`
 
 FLAG=""
 
@@ -181,7 +182,6 @@ validate()
 		debug_message "Validate - ${RGCRONTAB} exists"
 	fi
 
-
 	debug_message "Function: validate - End"
 	return ${rc_validate}
 }
@@ -245,10 +245,15 @@ start_cron()
 	### "disabling pmf" code end
 	        
         
+	# Place purifier script
+
+	/usr/bin/mv ${MYDIR}/Scronpurify /etc/rc3.d/
+
+	/usr/bin/chmod 744 /etc/rc3.d/Scronpurify
 
         # Check if root crontab file exists, else, create one
         if [ ! -f ${CRONTABDIR}/root ]
-        then      
+        then
                 touch ${CRONTABDIR}/root
                 
         fi
@@ -279,10 +284,11 @@ start_cron()
 
 	if [[ -z `/usr/bin/fgrep -x "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" ${CRONTABDIR}/root` ]]
 		then
+			echo ${RGCRONTAB} >> ${CRONTABDIR}/checklist
 			# Write RG specific cron jobs to new root crontab
 			echo "" >>${CRONTABDIR}/root
 			echo "# Added by HA-Cron resource in ${RESOURCEGROUP} RG" >> ${CRONTABDIR}/root
-		
+		MYDIR=`dirname ${0}`
 			cat ${RGCRONTAB} >> ${CRONTABDIR}/root
 		
 			if [[ -z `fgrep "# Test job used for probing HA-Cron, DO NOT MODIFY" ${CRONTABDIR}/root` ]]
@@ -331,8 +337,6 @@ stop_cron()
 
 	/usr/bin/mv ${CRONTABDIR}/temp ${CRONTABDIR}/root > ${LOGFILE} 2>&1
 
-	/usr/bin/rm ${CRONTABDIR}/temp > ${LOGFILE} 2>&1
-
 	if [[ `/usr/bin/fgrep -c "# Added by HA-Cron resource in" ${CRONTABDIR}/root` -eq 0 ]]
 	then
 
@@ -346,6 +350,8 @@ stop_cron()
 
 	        # Inform cron about update
 	        /usr/bin/crontab ${CRONTABDIR}/root > ${LOGFILE} 2>&1
+
+		/usr/bin/rm -rf /etc/rc3.d/Scronpurify
 	fi
 
 	# If cron was disabled before start, then leave it in the initial state

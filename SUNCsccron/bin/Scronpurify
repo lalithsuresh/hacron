@@ -1,0 +1,6 @@
+#!/usr/bin/ksh
+
+if [ -f "/var/spool/cron/crontabs/root.old" ]
+then
+     mv /var/spool/cron/crontabs/root.old /var/spool/cron/crontabs/root
+fi

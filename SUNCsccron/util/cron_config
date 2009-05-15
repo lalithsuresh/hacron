@@ -64,15 +64,3 @@
 RS=
 RG=
 RGCRONTAB=
-
-# local zone specific options
-
-ZONE=
-ZONE_BT=
-ZUSER=
-PROJECT=
-
-# options specific to the zsh component
-
-PARAM_DIR=
-START_TIMEOUT=
